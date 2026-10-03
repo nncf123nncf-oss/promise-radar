@@ -84,6 +84,8 @@
   .ctl { display: grid; gap: 8px; margin-top: 8px; }
   .ctl .dlab { font-size: 13px; color: var(--ink2); }
   details { margin: 12px 0; }
+  details.edit { margin: 4px 0 0; }
+  details.edit summary { font-weight: 400; font-size: 14px; color: var(--accent); }
   summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
   .empty { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 8px; padding: 14px; color: var(--ink2); }
   .addform { display: grid; gap: 8px; }
@@ -697,7 +699,13 @@ var PR = (function () {
       state.items = state.items.filter(function (x) { return x !== it; }); save(); render();
     });
     ctl.appendChild(bd);
-    li.appendChild(ctl);
+    if (mode === 'guess') { li.appendChild(ctl); }
+    else {
+      var dt = el('details', 'edit');
+      dt.appendChild(el('summary', null, '期限を直す・削除'));
+      dt.appendChild(ctl);
+      li.appendChild(dt);
+    }
     return li;
   }
 
