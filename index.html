@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>返信・約束もれレーダー</title>
+<meta name="description" content="LINE・メール・DMの会話を貼ると、「あとで送ります」のような約束や、まだ返していない質問を自動チェックして一覧にします。会話は端末の外へ送信しません。">
+<style>
+  :root {
+    --bg: #f6f6f7; --surface: #ffffff; --ink: #1c1c1e; --ink2: #48484d; --ink3: #66666d;
+    --line: #d6d6db; --line-strong: #85858d; --accent: #0b5aa6; --accent-ink: #ffffff;
+    --warn-bg: #fff4e0; --warn-line: #d9a54a; --warn-ink: #5e3700;
+    --danger: #b3261e; --danger-bg: #fdecea; --danger-ink: #8a1c15;
+    --soon-bg: #fff4e0; --soon-ink: #5e3700; --ok: #1b6b34;
+    --font: "Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --surface: #1e1e21; --ink: #f2f2f3; --ink2: #cbcbd0; --ink3: #a4a4ac;
+      --line: #3a3a40; --line-strong: #7d7d86; --accent: #8cbfff; --accent-ink: #0b1b2e;
+      --warn-bg: #3a2a10; --warn-line: #8a6a2a; --warn-ink: #ffdca8;
+      --danger: #ff8f86; --danger-bg: #3d1a17; --danger-ink: #ffb4ac;
+      --soon-bg: #3a2a10; --soon-ink: #ffdca8; --ok: #7fd49a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 32px; }
+  h1 { font-size: 22px; line-height: 1.3; margin: 8px 0 8px; }
+  h2 { font-size: 17px; line-height: 1.4; margin: 16px 0 8px; }
+  p { margin: 0 0 8px; }
+  .lead { color: var(--ink2); }
+  .note { font-size: 14px; color: var(--ink2); }
+  .small { font-size: 13px; color: var(--ink2); }
+  .notice { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px; padding: 12px 14px; margin: 12px 0 8px; font-size: 14px; }
+  .notice p:last-child { margin-bottom: 0; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  label.lb { display: block; font-weight: 600; margin: 0 0 4px; }
+  textarea, input[type="text"], input[type="date"] {
+    width: 100%; max-width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 10px 12px; min-height: 44px;
+  }
+  textarea { resize: vertical; line-height: 1.6; }
+  button {
+    font: inherit; font-size: 16px; min-height: 44px; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong);
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; width: 100%; }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button.block { width: 100%; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .btnrow > button { flex: 1 1 140px; }
+  .speakers { display: grid; gap: 6px; margin: 4px 0 8px; }
+  .spk { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); cursor: pointer; overflow-wrap: anywhere; }
+  .spk input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; }
+  .msg { min-height: 24px; font-size: 14px; color: var(--ink2); margin-top: 8px; overflow-wrap: anywhere; }
+  .msg.err { color: var(--danger); font-weight: 600; }
+  .calcnote { font-size: 12px; color: var(--ink3); }
+
+  .group { margin: 12px 0; }
+  .ghead { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+  .ghead .cnt { font-weight: 400; color: var(--ink2); font-size: 13px; }
+  .ghead.over { color: var(--danger); }
+  .items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+  .item.is-over { border-left: 4px solid var(--danger); }
+  .item.is-soon { border-left: 4px solid var(--warn-line); }
+  .donecheck { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; color: var(--ink2); cursor: pointer; }
+  .donecheck input { width: 24px; height: 24px; flex: 0 0 24px; margin: 0; }
+  .f { margin: 0 0 6px; min-width: 0; }
+  .f .k { display: block; font-size: 12px; color: var(--ink3); }
+  .f .v { display: block; overflow-wrap: anywhere; word-break: break-word; }
+  .f .v.what { font-weight: 700; font-size: 17px; }
+  .ev { font-size: 14px; color: var(--ink2); border-left: 3px solid var(--line-strong); padding: 2px 0 2px 10px; overflow-wrap: anywhere; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; margin-right: 4px; vertical-align: 1px; }
+  .chip.over { color: var(--danger-ink); background: var(--danger-bg); }
+  .chip.soon { color: var(--soon-ink); background: var(--soon-bg); }
+  .chip.wait { color: var(--accent); }
+  .chip.chk { color: var(--warn-ink); background: var(--warn-bg); }
+  .chip.est { color: var(--ink2); }
+  .ctl { display: grid; gap: 8px; margin-top: 8px; }
+  .ctl .dlab { font-size: 13px; color: var(--ink2); }
+  details { margin: 12px 0; }
+  summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+  .empty { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 8px; padding: 14px; color: var(--ink2); }
+  .addform { display: grid; gap: 8px; }
+  #copyfb { display: none; margin-top: 8px; }
+  .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
+    border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
+  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; display: inline-block; padding: 13px 0; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (min-width: 880px) {
+    main { padding: 24px 16px 40px; }
+    h1 { font-size: 24px; }
+    .cols { display: grid; grid-template-columns: 5fr 7fr; gap: 24px; align-items: start; }
+    .left { position: sticky; top: 12px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>返信・約束もれレーダー</h1>
+  <p class="lead">LINE・メール・DMの会話を貼ると、「あとで送ります」のような約束や、まだ返していない質問を自動でチェックして、一覧にします。</p>
+  <div class="notice" role="note">
+    <p><strong>端末内のルール判定で処理します。貼り付けた会話内容は外部へ送信しません。</strong></p>
+    <p>会話の全文は保存しません。一覧に残した項目だけを、この端末のブラウザに保存します。</p>
+  </div>
+
+  <div class="cols">
+    <section class="left" aria-label="会話を貼る">
+      <div class="panel">
+        <label class="lb" for="src">1. 会話を貼る</label>
+        <textarea id="src" rows="10" autocomplete="off" spellcheck="false" placeholder="LINEのトーク、メール、DMの文章をここに貼り付けます。&#10;例）&#10;鈴木: 見積をお願いできますか？&#10;田中: 明日までにお送りします"></textarea>
+        <div class="btnrow"><button type="button" id="sample">サンプルで試す</button></div>
+
+        <label class="lb" for="convDate">2. 会話があった日</label>
+        <input type="date" id="convDate">
+        <p class="small" style="margin-top:4px">「明日」「今週中」などの数え始めの日になります。</p>
+        <p class="calcnote" id="calcnote" hidden></p>
+
+        <p class="lb" id="spkLabel" style="margin-top:12px">3. あなたはどの話者ですか</p>
+        <div id="speakers" role="radiogroup" aria-labelledby="spkLabel" class="speakers"></div>
+        <p class="small" id="spkHint">会話を貼ると、話者の名前が候補に出ます。</p>
+
+        <button type="button" id="run" class="primary">もれを探す</button>
+        <div id="msg" class="msg" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="right" aria-label="結果の一覧">
+      <h2 id="listTop" style="margin-top:0">一覧</h2>
+      <p class="small">すべての約束を検出できるわけではありません。見つからなかった＝約束がない、ではありません。根拠の文を見て確認してください。</p>
+      <div class="btnrow">
+        <button type="button" id="copy">一覧をコピー</button>
+        <button type="button" id="clear" class="danger">全部消す</button>
+      </div>
+      <textarea id="copyfb" rows="6" readonly aria-label="コピー用の文章"></textarea>
+      <div id="copymsg" class="msg" role="status" aria-live="polite"></div>
+      <div id="list"></div>
+
+      <details id="guessBox" hidden>
+        <summary id="guessSum">済んでいそうなもの</summary>
+        <p class="small">約束のあとに「送りました」などの発言があったものです。自動の推測なので、確認してください。</p>
+        <ul class="items" id="guessList"></ul>
+      </details>
+      <details id="doneBox" hidden>
+        <summary id="doneSum">完了したもの</summary>
+        <ul class="items" id="doneList"></ul>
+      </details>
+
+      <h2>手動で1件足す</h2>
+      <div class="panel addform">
+        <div><label class="lb" for="addWho">誰に</label><input type="text" id="addWho" maxlength="30" autocomplete="off"></div>
+        <div><label class="lb" for="addWhat">何を</label><input type="text" id="addWhat" maxlength="60" autocomplete="off"></div>
+        <div><label class="lb" for="addDue">いつまで（空でも追加できます）</label><input type="date" id="addDue"></div>
+        <button type="button" id="addBtn" class="block">一覧に足す</button>
+      </div>
+
+      <p class="note" style="margin-top:12px" id="storeNote">項目はこの端末のブラウザにだけ保存します。ブラウザの設定や使い方によって消えることがあります（Safariなどでは、長く開かないと消える場合があります。実機では未確認です）。保存される根拠の文には、相手の名前や内容が入ることがあります。1件ずつの削除や、「全部消す」でいつでも消せます。</p>
+    </section>
+  </div>
+
+  <footer class="mw-footer">
+    <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+    <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+    <p>貼り付けた会話はこのページの中（お使いの端末のブラウザ）だけで処理し、サーバーには送信しません。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧数だけを計測しています。貼り付けた会話や入力内容は送信しません。</p>
+    <p>言い回しのルールで判定する簡易的なチェックです。拾い漏れや拾い違いがあります。約束の管理は、必ずご自身の目で確認してください。</p>
+    <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+  </footer>
+</main>
+
+<script>
+/*ENGINE-START*/
+var PR = (function () {
+  'use strict';
+  var WD = ['日', '月', '火', '水', '木', '金', '土'];
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function ymd(o) { return o.y + '-' + pad(o.m) + '-' + pad(o.d); }
+  function parseYmd(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    if (!m) return null;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    var t = new Date(Date.UTC(y, mo - 1, d));
+    if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
+    return { y: y, m: mo, d: d };
+  }
+  function toT(o) { return Date.UTC(o.y, o.m - 1, o.d); }
+  function fromT(t) { var x = new Date(t); return { y: x.getUTCFullYear(), m: x.getUTCMonth() + 1, d: x.getUTCDate() }; }
+  function addDays(o, n) { return fromT(toT(o) + n * 86400000); }
+  function dow(o) { return new Date(toT(o)).getUTCDay(); }
+  function diffDays(a, b) { return Math.round((toT(a) - toT(b)) / 86400000); }
+  function mondayOf(o) { return addDays(o, -((dow(o) + 6) % 7)); }
+  function daysInMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+  function validDate(y, m, d) { return parseYmd(y + '-' + pad(m) + '-' + pad(d)); }
+  function fmtShort(o, today) {
+    var s = (today && o.y === today.y ? '' : o.y + '/') + o.m + '/' + o.d + '(' + WD[dow(o)] + ')';
+    return s;
+  }
+
+  // ---------- 期限の解釈 ----------
+  var DOWM = { '日': 0, '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6 };
+  function absDate(base, m, d) {
+    var v = validDate(base.y, m, d);
+    if (!v) return null;
+    if (diffDays(v, base) < -180) { var v2 = validDate(base.y + 1, m, d); if (v2) v = v2; }
+    return v;
+  }
+  function fridayOfWeek(base, weekOffset) {
+    return addDays(mondayOf(base), weekOffset * 7 + 4);
+  }
+  var VAGUE = /(来月|週明け|週末|年内|近いうち|近日|後ほど|のちほど|後で|あとで|そのうち|追って|改めて|折を見て|落ち着いたら|時間があるとき)/;
+  // 各規則: [正規表現, 変換]。正規表現の1番目のグループは直前の文字（除去しない）
+  var DEADLINE_RULES = [
+    [/()(\d{1,2})月(\d{1,2})日/, function (m, b) { var d = absDate(b, +m[2], +m[3]); return d && { date: d }; }],
+    [/(^|[^\d])(\d{1,2})\/(\d{1,2})(?![\d\/])/, function (m, b) { var d = absDate(b, +m[2], +m[3]); return d && { date: d }; }],
+    [/()(来月)/, function () { return { vague: true }; }],
+    [/(^|[^\d月])(\d{1,2})日(?=まで|には|中|に)/, function (m, b) { var d = validDate(b.y, b.m, +m[2]); return d && { date: d }; }],
+    [/()(\d{1,2})日後/, function (m, b) { return { date: addDays(b, +m[2]) }; }],
+    [/()(今日中|本日中|今日|本日|当日中)/, function (m, b) { return { date: b }; }],
+    [/()(明後日|あさって)/, function (m, b) { return { date: addDays(b, 2) }; }],
+    [/()(明日|あした)/, function (m, b) { return { date: addDays(b, 1) }; }],
+    [/()(再来週|来週)の?([月火水木金土日])曜日?/, function (m, b) {
+      var w = (DOWM[m[3]] + 6) % 7;
+      return { date: addDays(mondayOf(b), (m[2] === '来週' ? 7 : 14) + w) };
+    }],
+    [/()(今週中|今週内)/, function (m, b) {
+      var f = fridayOfWeek(b, 0);
+      if (dow(b) === 0 || dow(b) === 6) f = fridayOfWeek(b, 1);
+      return { date: f, approx: true };
+    }],
+    [/()(来週中|来週内)/, function (m, b) { return { date: fridayOfWeek(b, 1), approx: true }; }],
+    [/()(今月末|月末)/, function (m, b) { return { date: validDate(b.y, b.m, daysInMonth(b.y, b.m)) }; }],
+    [/()(週明け|週末|年内|近いうち|近日|後ほど|のちほど|後で|あとで|そのうち|追って|改めて|折を見て|落ち着いたら|時間があるとき)/, function () { return { vague: true }; }],
+    [/()([月火水木金土日])曜日?/, function (m, b) {
+      var diff = (DOWM[m[2]] - dow(b) + 7) % 7;
+      return { date: addDays(b, diff) };
+    }],
+    [/(^|[^\d])(\d{1,2})時(半|\d{1,2}分)?/, function (m, b) { return { date: b }; }]
+  ];
+  var TAIL = /^(までに|まで|には|に|中に|中は|中|ごろ|頃)/;
+  function parseDeadline(s, base) {
+    for (var i = 0; i < DEADLINE_RULES.length; i++) {
+      var re = DEADLINE_RULES[i][0], m = re.exec(s);
+      if (!m) continue;
+      var r = DEADLINE_RULES[i][1](m, base);
+      if (!r) continue;
+      var pre = (m[1] || ''), start = m.index + pre.length, word = m[0].slice(pre.length);
+      var after = s.slice(start + word.length), t = TAIL.exec(after);
+      var end = start + word.length + (t ? t[0].length : 0);
+      return {
+        date: r.date || null, approx: !!r.approx, vague: !!r.vague, basis: word,
+        masked: s.slice(0, start) + s.slice(end)
+      };
+    }
+    return { date: null, approx: false, vague: false, basis: '', masked: s };
+  }
+
+  // ---------- 会話の読み取り ----------
+  var RE_LINE_DATE = /^\d{4}[\/.\-]\d{1,2}[\/.\-]\d{1,2}\s*(\(.{1,3}\)|（.{1,3}）)?\s*$/;
+  var RE_LINE_TAB = /^\d{1,2}:\d{2}\t([^\t]+)\t(.*)$/;
+  var RE_LINE_SP = /^\d{1,2}:\d{2}\s+(\S+)\s+(.+)$/;
+  var RE_FROM = /^(From|差出人|送信者)\s*[:：]\s*(.*)$/i;
+  var RE_MAILHDR = /^(件名|Subject|To|Cc|CC|Date|宛先|送信日時|日時|Sent)\s*[:：]/;
+  var RE_WROTE = /(が書きました|wrote\s*[:：]?\s*$|からのメッセージ)/;
+  var RE_NAMECOLON = /^([^\s:：>＞\t][^:：\t]{0,19}?)\s*[:：]\s*(.*)$/;
+
+  function cleanName(s) {
+    s = (s || '').replace(/<[^>]*>/g, '').replace(/["'“”「」]/g, '').trim();
+    if (/@/.test(s)) s = s.split('@')[0];
+    return s.slice(0, 20);
+  }
+  function parseConversation(text) {
+    var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    var msgs = [], format = 'none', cur = null, i, l, m;
+    var hasLineDate = lines.some(function (x) { return RE_LINE_DATE.test(x.trim()); });
+    var hasTab = lines.some(function (x) { return RE_LINE_TAB.test(x); });
+    var hasFrom = lines.some(function (x) { return RE_FROM.test(x.trim()); });
+    function push(sp, t) { cur = { speaker: sp, text: t }; msgs.push(cur); }
+    function append(t) { if (cur) cur.text += '\n' + t; else push(null, t); }
+
+    if (hasTab || (hasLineDate && lines.some(function (x) { return RE_LINE_SP.test(x); }))) {
+      format = 'line';
+      for (i = 0; i < lines.length; i++) {
+        l = lines[i]; var tl = l.trim();
+        if (!tl || RE_LINE_DATE.test(tl)) continue;
+        m = RE_LINE_TAB.exec(l) || (hasLineDate ? RE_LINE_SP.exec(tl) : null);
+        if (m) push(cleanName(m[1]), m[2]); else if (cur) append(tl);
+      }
+    } else if (hasFrom) {
+      format = 'mail';
+      for (i = 0; i < lines.length; i++) {
+        l = lines[i].trim();
+        if (!l) continue;
+        m = RE_FROM.exec(l);
+        if (m) { push(cleanName(m[2]) || null, ''); continue; }
+        if (/^[>＞]/.test(l) || RE_MAILHDR.test(l) || RE_WROTE.test(l)) continue;
+        if (cur) cur.text += (cur.text ? '\n' : '') + l; else push(null, l);
+      }
+      msgs = msgs.filter(function (x) { return x.text.trim(); });
+    } else {
+      var cnt = 0;
+      var cand = lines.map(function (x) {
+        var t = x.trim(), mm = RE_NAMECOLON.exec(t);
+        if (!mm) return null;
+        var nm = mm[1].trim();
+        if (!nm || /^[\d\s\/.\-:]+$/.test(nm) || /https?|^www\./i.test(nm) || /[。！？!?、，,]/.test(nm) || /^\/\//.test(mm[2])) return null;
+        cnt++; return mm;
+      });
+      if (cnt >= 2) {
+        format = 'colon';
+        for (i = 0; i < lines.length; i++) {
+          l = lines[i].trim();
+          if (!l) continue;
+          if (cand[i]) push(cand[i][1].trim(), cand[i][2]); else append(l);
+        }
+      } else {
+        var all = lines.join('\n').trim();
+        if (all) push(null, all);
+      }
+    }
+    var speakers = [];
+    msgs.forEach(function (x) { if (x.speaker && speakers.indexOf(x.speaker) < 0) speakers.push(x.speaker); });
+    return { format: format, messages: msgs, speakers: speakers };
+  }
+
+  function splitSentences(t) {
+    var out = [];
+    String(t).split('\n').forEach(function (line) {
+      var mm = line.match(/[^。！？!?]+[。！？!?]*/g) || [];
+      mm.forEach(function (s) { s = s.trim(); if (s.length >= 2) out.push(s); });
+    });
+    return out;
+  }
+
+  // ---------- 約束・依頼の判定 ----------
+  function find1(s, re) { var m = re.exec(s); return m ? m.index : -1; }
+  var ACTIONS = [
+    { key: '送', te: '送って', base: '送る', idx: function (s) { return find1(s, /送(り|る|付|信|って)/); } },
+    { key: '連絡', te: '連絡して', base: '連絡する', idx: function (s) { return find1(s, /連絡/); } },
+    { key: '電話', te: '電話して', base: '電話する', idx: function (s) { return /電話番号/.test(s) ? -1 : find1(s, /電話/); } },
+    { key: '折り返', te: '折り返して', base: '折り返す', idx: function (s) { return find1(s, /折り返/); } },
+    { key: '返信', te: '返信して', base: '返信する', idx: function (s) { return find1(s, /返信|返事/); } },
+    { key: '確認', te: '確認して', base: '確認する', idx: function (s) { return find1(s, /確認/); } },
+    { key: '共有', te: '共有して', base: '共有する', idx: function (s) { return find1(s, /共有/); } },
+    { key: '提出', te: '提出して', base: '提出する', idx: function (s) { return find1(s, /提出/); } },
+    { key: '出', te: '出して', base: '出す', idx: function (s) { var m = /(^|[^提])(出し(ます|いたします))/.exec(s); return m ? m.index + m[1].length : -1; } },
+    { key: '手配', te: '手配して', base: '手配する', idx: function (s) { return find1(s, /手配/); } },
+    { key: '用意', te: '用意して', base: '用意する', idx: function (s) { return find1(s, /用意/); } },
+    { key: '準備', te: '準備して', base: '準備する', idx: function (s) { return find1(s, /準備/); } },
+    { key: '報告', te: '報告して', base: '報告する', idx: function (s) { return find1(s, /報告/); } },
+    { key: '回答', te: '回答して', base: '回答する', idx: function (s) { return find1(s, /回答/); } },
+    { key: '伝え', te: '伝えて', base: '伝える', idx: function (s) { return find1(s, /伝え(し|いたし)?ます/); } },
+    { key: '見積', te: '見積もって', base: '見積もる', idx: function (s) { return find1(s, /見積(もり|し|いたし)ます/); } }
+  ];
+  function findActions(s) {
+    var found = [];
+    ACTIONS.forEach(function (a) { var i = a.idx(s); if (i >= 0) found.push({ a: a, i: i }); });
+    found.sort(function (x, y) { return x.i - y.i; });
+    var out = [], seen = {};
+    found.forEach(function (f) { if (!seen[f.a.key] && out.length < 2) { seen[f.a.key] = 1; out.push(f); } });
+    return out;
+  }
+  var TRAIL_SYMBOLS = /[\s。．.!！?？~～♪★☆♡❤️👍🙏😊😄🙇‍♀️♂️…・\u{1F300}-\u{1FAFF}☀-➿]+$/u;
+  var TEIKI = /[、，,]?(どうぞ|何卒)?よろしくお願い(いたし)?ます$/;
+  var TEIKI_ONLY = /^(何卒|どうぞ|引き続き|今後とも|改めて|それでは|では|また)*よろしくお願い(いたし)?ます$/;
+  var ENDING = /(ます|いたします|致します|予定です|予定でございます|つもりです)(ね|よ|ので|が|けど|けれど|から|し|です)?$/;
+  var REJECT_OBJ = ['私', 'わたし', '僕', '弊社', '当方', 'こちら', 'そちら', 'それ', 'これ', 'あれ', 'わたくし'];
+
+  function stripTrail(s) { return s.replace(TRAIL_SYMBOLS, ''); }
+
+  function extractObject(masked, firstIdx) {
+    var pre = masked.slice(0, firstIdx).replace(/[おご]$/, '');
+    var ix = Math.max(pre.lastIndexOf('を'), pre.lastIndexOf('は'), pre.lastIndexOf('も'));
+    if (ix < 1) return '';
+    if (pre.length - ix - 1 > 4) return '';
+    var obj = pre.slice(0, ix);
+    var cut = Math.max(obj.lastIndexOf('、'), obj.lastIndexOf('，'), obj.lastIndexOf(','), obj.lastIndexOf('。'), obj.lastIndexOf(' '), obj.lastIndexOf('　'), obj.lastIndexOf('「'));
+    if (cut >= 0) obj = obj.slice(cut + 1);
+    var re = /[にでが]|から|まで|へ/g, mm, last = -1, lastLen = 1;
+    while ((mm = re.exec(obj))) { last = mm.index; lastLen = mm[0].length; }
+    if (last >= 0 && obj.length - last - lastLen >= 2) obj = obj.slice(last + lastLen);
+    obj = obj.replace(/^(あと|また|では|それでは|じゃあ|ちなみに|なお|はい|えーと|承知しました|了解です)/, '').replace(/の$/, '').trim();
+    if (!obj || REJECT_OBJ.indexOf(obj) >= 0) return '';
+    return obj.slice(0, 14);
+  }
+
+  function detectPromise(sentence, base) {
+    var s = stripTrail(sentence.trim());
+    s = s.replace(TEIKI, '');
+    s = stripTrail(s);
+    if (!s || TEIKI_ONLY.test(s)) return null;
+    if (/[？?]/.test(s) || /か$/.test(s)) return null;
+    if (/もし|場合|であれば/.test(s)) return null;
+    if (/ありがとう|恐れ入|申し訳|すみません|ごめん/.test(s)) return null;
+    var tmp = s.replace(/させて(いただ|頂)/g, 'させて');
+    if (/(いただ|頂)/.test(tmp)) return null;
+    var lc = s.split(/[、，,]/).pop();
+    if (/(お?願い|いただけ|頂け|ください|下さい|くださ)/.test(lc)) return null;
+    if (!ENDING.test(s)) return null;
+    if (/(できます|可能です)(ね|よ)?$/.test(s)) return null;
+    if (/思います/.test(s) && !/(よう|たい)と思います/.test(s)) return null;
+    var dl = parseDeadline(s, base);
+    var acts = findActions(dl.masked);
+    if (!acts.length) return null;
+    var obj = extractObject(dl.masked, acts[0].i);
+    var chain = acts.length > 1 ? acts[0].a.te + acts[1].a.base : acts[0].a.base;
+    return {
+      what: (obj ? obj + 'を' : '') + chain,
+      keys: acts.map(function (x) { return x.a.key; }),
+      dl: dl
+    };
+  }
+  function isRequest(sentence) {
+    var s = stripTrail(sentence.trim());
+    if (!s || TEIKI_ONLY.test(s)) return false;
+    if (/^(ありがとう|助かり|承知|了解|わかりました|かしこまり)/.test(s) && !/[？?]/.test(s)) return false;
+    return /[？?]|でしょうか|ますか|ですか|ください|下さい|いただけ|頂け|お願い(します|いたします|できますか)|してほしい|欲しい|教えて/.test(s);
+  }
+  function doneRegex(keys) {
+    var parts = keys.map(function (k) { return k + '[^。！？]{0,6}(ました|済み|完了)'; });
+    parts.push('完了(しました|です|済み)');
+    return new RegExp(parts.join('|'));
+  }
+  function scrub(s) {
+    return String(s)
+      .replace(/[\w.+\-]+@[\w\-]+(\.[\w\-]+)+/g, '(メール)')
+      .replace(/0\d{1,4}[\-ー]\d{1,4}[\-ー]\d{3,4}|0\d{9,10}/g, '(電話番号)');
+  }
+
+  var seq = 0;
+  function newId() { seq++; return 'i' + Date.now().toString(36) + seq; }
+
+  function extract(text, me, convStr) {
+    var base = parseYmd(convStr);
+    var parsed = parseConversation(text), msgs = parsed.messages;
+    var hasSp = parsed.speakers.length > 0;
+    var meName = me || '';
+    var unknownMode = !hasSp || !meName;
+    var flat = [];
+    msgs.forEach(function (m, mi) {
+      splitSentences(m.text).forEach(function (s) { flat.push({ mi: mi, speaker: m.speaker, text: s }); });
+    });
+    function otherName(mi) {
+      var j;
+      for (j = mi; j >= 0; j--) { var sp = msgs[j].speaker; if (sp && sp !== meName) return sp; }
+      for (j = mi + 1; j < msgs.length; j++) { var sp2 = msgs[j].speaker; if (sp2 && sp2 !== meName) return sp2; }
+      return '';
+    }
+    var items = [], seen = {};
+    function add(it) {
+      var k = it.who + '|' + it.evidence.slice(0, 60);
+      if (seen[k]) return; seen[k] = 1; items.push(it);
+    }
+    flat.forEach(function (s, fi) {
+      var isMine = unknownMode ? true : (s.speaker === meName);
+      var unk = unknownMode || !s.speaker;
+      if (!unknownMode && !isMine && s.speaker) return;
+      var p = detectPromise(s.text, base);
+      if (!p) return;
+      var guess = false;
+      var re = doneRegex(p.keys);
+      for (var k = fi + 1; k < flat.length; k++) {
+        var o = flat[k];
+        if ((unknownMode || o.speaker === meName) && re.test(o.text)) { guess = true; break; }
+      }
+      add({
+        id: newId(), kind: 'promise', who: unknownMode ? '' : otherName(s.mi), what: p.what,
+        due: p.dl.date ? ymd(p.dl.date) : null, approx: p.dl.approx, basis: p.dl.basis,
+        evidence: scrub(s.text), done: false, guess: guess, check: unk, edited: false
+      });
+    });
+    if (!unknownMode) {
+      var lastMe = -1;
+      msgs.forEach(function (m, mi) { if (m.speaker === meName) lastMe = mi; });
+      var waits = [];
+      flat.forEach(function (s) {
+        if (s.mi > lastMe && s.speaker && s.speaker !== meName && isRequest(s.text)) waits.push(s);
+      });
+      waits.slice(-5).forEach(function (s) {
+        add({
+          id: newId(), kind: 'wait', who: s.speaker, what: '返信する',
+          due: null, approx: false, basis: '', evidence: scrub(s.text),
+          done: false, guess: false, check: false, edited: false
+        });
+      });
+    }
+    return { items: items, speakers: parsed.speakers, format: parsed.format };
+  }
+
+  return {
+    extract: extract, parseConversation: parseConversation, parseDeadline: parseDeadline,
+    parseYmd: parseYmd, ymd: ymd, diffDays: diffDays, fmtShort: fmtShort, scrub: scrub, WD: WD
+  };
+})();
+/*ENGINE-END*/
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'promise-radar:v1';
+  var MAX_ITEMS = 100, MAX_TEXT = 50000;
+  var SAMPLE = [
+    '鈴木: 先日の見積、いつ頃いただけますか？',
+    '田中: 承知しました。見積書は明日までにお送りします',
+    '鈴木: 搬入日は10/20でお願いします',
+    '田中: 了解です。図面を確認して、今週中にご返信します',
+    '鈴木: あと請求書の宛名も変えたいです',
+    '田中: 宛名の件は後ほど連絡しますね',
+    '鈴木: ちなみに駐車場は使えますか？'
+  ].join('\n');
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { me: '', items: [] };
+  var saveFailed = false;
+  var needRender = false;
+
+  // ---- 今日（検算用に ?today=YYYY-MM-DD で固定できる） ----
+  function localToday() {
+    var d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+  }
+  var todayObj = localToday(), usedFixed = false;
+  try {
+    var q = /[?&]today=(\d{4}-\d{2}-\d{2})/.exec(location.search);
+    if (q) { var fx = PR.parseYmd(q[1]); if (fx) { todayObj = fx; usedFixed = true; } }
+  } catch (e) { /* 何もしない */ }
+  function todayStr() { return PR.ymd(todayObj); }
+
+  // ---- 保存 ----
+  function save() {
+    try {
+      var data = {
+        v: 1, me: state.me,
+        items: state.items.map(function (it) {
+          return {
+            id: it.id, kind: it.kind, who: it.who, what: it.what, due: it.due, approx: !!it.approx,
+            basis: it.basis || '', evidence: String(it.evidence || '').slice(0, 60), done: !!it.done,
+            guess: !!it.guess, check: !!it.check, edited: !!it.edited
+          };
+        })
+      };
+      localStorage.setItem(KEY, JSON.stringify(data));
+      saveFailed = false;
+    } catch (e) { saveFailed = true; }
+    updateStoreNote();
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (!d || d.v !== 1 || !Array.isArray(d.items)) return;
+      state.me = typeof d.me === 'string' ? d.me.slice(0, 20) : '';
+      state.items = d.items.filter(function (x) {
+        return x && typeof x.what === 'string' && typeof x.id === 'string';
+      }).slice(0, MAX_ITEMS).map(function (x) {
+        return {
+          id: x.id, kind: x.kind === 'wait' ? 'wait' : (x.kind === 'manual' ? 'manual' : 'promise'),
+          who: typeof x.who === 'string' ? x.who : '', what: String(x.what).slice(0, 60),
+          due: PR.parseYmd(x.due) ? x.due : null, approx: !!x.approx, basis: typeof x.basis === 'string' ? x.basis.slice(0, 20) : '',
+          evidence: typeof x.evidence === 'string' ? x.evidence.slice(0, 60) : '', done: !!x.done,
+          guess: !!x.guess, check: !!x.check, edited: !!x.edited
+        };
+      });
+    } catch (e) { state.items = []; }
+  }
+  function updateStoreNote() {
+    var n = $('copymsg');
+    if (saveFailed) { n.textContent = '保存できませんでした（このブラウザでは保存が使えない状態です）。この画面を開いている間は使えます。'; n.className = 'msg err'; }
+  }
+
+  // ---- 小さなDOM道具 ----
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function setMsg(t, err) { var m = $('msg'); m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); }
+
+  // ---- 話者の候補 ----
+  var spkTimer = null;
+  function renderSpeakers() {
+    var text = $('src').value;
+    var box = $('speakers'), hint = $('spkHint');
+    box.textContent = '';
+    if (!text.trim()) { hint.textContent = '会話を貼ると、話者の名前が候補に出ます。'; return; }
+    var p = PR.parseConversation(text.slice(0, MAX_TEXT));
+    if (!p.speakers.length) {
+      hint.textContent = '話者が分かりません。担当は「要確認」になります。';
+      return;
+    }
+    hint.textContent = '選んだ名前以外は「相手」として扱います。選んだ名前はこの端末に覚えます。';
+    var cur = $('src').getAttribute('data-me') || state.me;
+    p.speakers.slice(0, 12).forEach(function (nm, i) {
+      var lab = el('label', 'spk');
+      var r = el('input'); r.type = 'radio'; r.name = 'me'; r.value = nm; r.id = 'spk' + i;
+      if (nm === cur) r.checked = true;
+      r.addEventListener('change', function () { $('src').setAttribute('data-me', nm); });
+      lab.appendChild(r); lab.appendChild(el('span', null, nm));
+      box.appendChild(lab);
+    });
+    if (p.speakers.length > 12) hint.textContent += '（話者が多いため、先頭の12人だけ表示しています）';
+  }
+  function chosenMe() {
+    var r = document.querySelector('#speakers input[name="me"]:checked');
+    return r ? r.value : '';
+  }
+
+  // ---- 表示 ----
+  function groupOf(it) {
+    if (it.check) return 'check';
+    if (!it.due) return 'undecided';
+    var d = PR.diffDays(PR.parseYmd(it.due), todayObj);
+    if (d < 0) return 'over';
+    if (d <= 2) return 'soon';
+    return 'later';
+  }
+  function dueText(it) {
+    if (!it.due) return '期限未定' + (it.basis ? '（「' + it.basis + '」）' : '');
+    var s = PR.fmtShort(PR.parseYmd(it.due), todayObj);
+    if (it.edited) return s + '（直しました）';
+    return s + (it.basis ? '（「' + it.basis + '」から）' : '');
+  }
+  function whoText(it) {
+    if (it.check && !it.who) return '（相手不明）';
+    if (!it.who) return '相手が分かりません';
+    return /さん$/.test(it.who) ? it.who : it.who + 'さん';
+  }
+  function field(k, v, cls) {
+    var f = el('div', 'f');
+    f.appendChild(el('span', 'k', k));
+    f.appendChild(el('span', 'v' + (cls ? ' ' + cls : ''), v));
+    return f;
+  }
+  function makeItem(it, mode) {
+    var g = groupOf(it);
+    var li = el('li', 'item' + (g === 'over' ? ' is-over' : g === 'soon' ? ' is-soon' : ''));
+    var head = el('div', 'f');
+    if (g === 'over') {
+      var od = PR.diffDays(todayObj, PR.parseYmd(it.due));
+      head.appendChild(el('span', 'chip over', '期限切れ（' + od + '日超過）'));
+    } else if (g === 'soon') {
+      var sd = PR.diffDays(PR.parseYmd(it.due), todayObj);
+      head.appendChild(el('span', 'chip soon', '期限間近（' + (sd === 0 ? '今日' : sd === 1 ? '明日' : 'あと2日') + '）'));
+    }
+    if (it.kind === 'wait') head.appendChild(el('span', 'chip wait', '返信待ち'));
+    if (it.check) head.appendChild(el('span', 'chip chk', '要確認'));
+    if (it.approx && it.due && !it.edited) head.appendChild(el('span', 'chip est', '日付は目安'));
+    if (head.childNodes.length) li.appendChild(head);
+
+    if (mode !== 'guess') {
+      var dc = el('label', 'donecheck');
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!it.done;
+      cb.addEventListener('change', function () { it.done = cb.checked; save(); render(); });
+      dc.appendChild(cb); dc.appendChild(el('span', null, it.done ? '完了（チェックを外すと戻ります）' : '完了にする'));
+      li.appendChild(dc);
+    }
+    li.appendChild(field('誰に', whoText(it)));
+    li.appendChild(field('何を', it.what, 'what'));
+    li.appendChild(field('いつまで', dueText(it)));
+    if (it.evidence) {
+      var f = el('div', 'f'); f.appendChild(el('span', 'k', '根拠の文'));
+      f.appendChild(el('div', 'ev', '「' + it.evidence + '」'));
+      li.appendChild(f);
+    } else if (it.kind === 'manual') {
+      li.appendChild(field('根拠の文', '（手動で追加）'));
+    }
+
+    var ctl = el('div', 'ctl');
+    if (mode === 'guess') {
+      var b1 = el('button', null, '完了にする'); b1.type = 'button';
+      b1.addEventListener('click', function () { it.guess = false; it.done = true; save(); render(); });
+      var b2 = el('button', null, '一覧に入れる（まだ済んでいない）'); b2.type = 'button';
+      b2.addEventListener('click', function () { it.guess = false; save(); render(); });
+      ctl.appendChild(b1); ctl.appendChild(b2);
+    } else {
+      var dl = el('label', 'dlab', '期限を直す'); dl.setAttribute('for', 'due-' + it.id);
+      var di = el('input'); di.type = 'date'; di.id = 'due-' + it.id; di.value = it.due || '';
+      di.addEventListener('change', function () {
+        var v = PR.parseYmd(di.value) ? di.value : null;
+        it.due = v; it.approx = false; it.edited = true; save(); needRender = true;
+      });
+      di.addEventListener('blur', function () { if (needRender) { needRender = false; render(); } });
+      ctl.appendChild(dl); ctl.appendChild(di);
+      var bu = el('button', null, '期限未定にする'); bu.type = 'button';
+      bu.addEventListener('click', function () { it.due = null; it.approx = false; it.edited = true; save(); render(); });
+      ctl.appendChild(bu);
+    }
+    var bd = el('button', 'danger', 'この項目を削除'); bd.type = 'button';
+    bd.addEventListener('click', function () {
+      state.items = state.items.filter(function (x) { return x !== it; }); save(); render();
+    });
+    ctl.appendChild(bd);
+    li.appendChild(ctl);
+    return li;
+  }
+
+  var GROUPS = [
+    ['over', '期限切れ'], ['soon', '今日〜明後日（期限間近）'], ['later', 'それ以降'],
+    ['undecided', '期限未定'], ['check', '要確認（誰の約束か分かりません）']
+  ];
+  function sortGroup(arr) {
+    return arr.slice().sort(function (a, b) {
+      if (a.due && b.due) return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+      return 0;
+    });
+  }
+  function render() {
+    var list = $('list'); list.textContent = '';
+    var active = state.items.filter(function (x) { return !x.done && !x.guess; });
+    var guesses = state.items.filter(function (x) { return !x.done && x.guess; });
+    var dones = state.items.filter(function (x) { return x.done; });
+    if (!active.length) {
+      var em = el('div', 'empty');
+      em.appendChild(el('p', null, state.items.length ? '未完了の項目はありません。' : 'まだ項目がありません。会話を貼って「もれを探す」を押してください。'));
+      em.appendChild(el('p', 'small', '見つからなかった＝約束がない、という意味ではありません。'));
+      list.appendChild(em);
+    }
+    GROUPS.forEach(function (g) {
+      var arr = sortGroup(active.filter(function (x) { return groupOf(x) === g[0]; }));
+      if (!arr.length) return;
+      var sec = el('section', 'group');
+      var h = el('h3', 'ghead' + (g[0] === 'over' ? ' over' : ''));
+      h.appendChild(document.createTextNode(g[1]));
+      h.appendChild(el('span', 'cnt', arr.length + '件'));
+      sec.appendChild(h);
+      var ul = el('ul', 'items');
+      arr.forEach(function (it) { ul.appendChild(makeItem(it, 'main')); });
+      sec.appendChild(ul); list.appendChild(sec);
+    });
+    fillBox('guessBox', 'guessList', 'guessSum', guesses, '済んでいそうなもの', 'guess');
+    fillBox('doneBox', 'doneList', 'doneSum', dones, '完了したもの', 'done');
+    $('copy').disabled = !active.length;
+    $('clear').disabled = !state.items.length && !$('src').value;
+  }
+  function fillBox(boxId, ulId, sumId, arr, label, mode) {
+    var box = $(boxId), ul = $(ulId);
+    ul.textContent = '';
+    box.hidden = !arr.length;
+    $(sumId).textContent = label + '（' + arr.length + '件）';
+    arr.forEach(function (it) { ul.appendChild(makeItem(it, mode)); });
+  }
+
+  // ---- 実行 ----
+  function run() {
+    var text = $('src').value;
+    if (!text.trim()) { setMsg('会話を貼ってください。', true); return; }
+    var conv = $('convDate').value;
+    if (!PR.parseYmd(conv)) { setMsg('会話があった日を入れてください。', true); return; }
+    var p = PR.parseConversation(text.slice(0, MAX_TEXT));
+    var me = chosenMe();
+    if (p.speakers.length && !me) { setMsg('「あなたはどの話者ですか」から、あなたの名前を選んでください。', true); return; }
+    if (me) { state.me = me; }
+    var notice = text.length > MAX_TEXT ? '長いので、先頭の5万字だけ処理しました。' : '';
+    var res = PR.extract(text.slice(0, MAX_TEXT), me, conv);
+    var have = {};
+    state.items.forEach(function (x) { have[x.who + '|' + String(x.evidence).slice(0, 60)] = 1; });
+    var added = 0, skipped = 0, full = false;
+    res.items.forEach(function (it) {
+      var k = it.who + '|' + it.evidence.slice(0, 60);
+      if (have[k]) { skipped++; return; }
+      if (state.items.length >= MAX_ITEMS) { full = true; return; }
+      have[k] = 1; state.items.push(it); added++;
+    });
+    save();
+    var m;
+    if (!res.items.length) m = '見つかりませんでした。約束がない、という意味ではありません。言い回しによっては拾えません。';
+    else m = added + '件を一覧に足しました。' + (skipped ? 'すでにある' + skipped + '件は飛ばしました。' : '');
+    if (full) m += '一覧は' + MAX_ITEMS + '件までです。完了したものを削除してください。';
+    setMsg(notice + m, full);
+    render();
+    try { $('listTop').scrollIntoView(); } catch (e) { /* 何もしない */ }
+  }
+
+  // ---- コピー ----
+  function buildCopyText() {
+    var active = state.items.filter(function (x) { return !x.done && !x.guess; });
+    var order = [];
+    GROUPS.forEach(function (g) { order = order.concat(sortGroup(active.filter(function (x) { return groupOf(x) === g[0]; }))); });
+    return order.map(function (it) {
+      var l1 = '□ ' + whoText(it) + ' ／ ' + it.what + (it.kind === 'wait' ? '（返信待ち）' : '') + ' ／ ' + dueText(it) + (it.approx && it.due && !it.edited ? '・目安' : '');
+      return l1 + (it.evidence ? '\n   根拠: 「' + it.evidence + '」' : '');
+    }).join('\n');
+  }
+  function copyList() {
+    var t = buildCopyText(), cm = $('copymsg'), fb = $('copyfb');
+    cm.className = 'msg'; fb.style.display = 'none';
+    if (!t) { cm.textContent = 'コピーする項目がありません。'; return; }
+    function manual() {
+      fb.value = t; fb.style.display = 'block'; fb.focus(); fb.select();
+      try { fb.setSelectionRange(0, t.length); } catch (e) { /* 何もしない */ }
+      var ok = false;
+      try { ok = document.execCommand && document.execCommand('copy'); } catch (e) { ok = false; }
+      cm.textContent = ok ? 'コピーしました。' : '自動でコピーできませんでした。選択された文字を、手でコピーしてください。';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { cm.textContent = 'コピーしました。'; }, manual);
+    } else { manual(); }
+  }
+
+  // ---- 手動追加・全部消す ----
+  function addManual() {
+    var who = $('addWho').value.trim(), what = $('addWhat').value.trim(), due = $('addDue').value;
+    var cm = $('copymsg');
+    if (!what) { cm.textContent = '「何を」を入れてください。'; cm.className = 'msg err'; return; }
+    if (state.items.length >= MAX_ITEMS) { cm.textContent = '一覧は' + MAX_ITEMS + '件までです。'; cm.className = 'msg err'; return; }
+    state.items.push({
+      id: 'm' + Date.now().toString(36) + state.items.length, kind: 'manual', who: who.slice(0, 30), what: what.slice(0, 60),
+      due: PR.parseYmd(due) ? due : null, approx: false, basis: '', evidence: '', done: false, guess: false, check: false, edited: false
+    });
+    $('addWho').value = ''; $('addWhat').value = ''; $('addDue').value = '';
+    cm.textContent = '1件足しました。'; cm.className = 'msg';
+    save(); render();
+  }
+  function clearAll() {
+    if (!window.confirm('一覧と、貼った会話をすべて消します。元に戻せません。よろしいですか？')) return;
+    state.items = []; state.me = '';
+    try { localStorage.removeItem(KEY); } catch (e) { /* 何もしない */ }
+    $('src').value = ''; $('src').removeAttribute('data-me'); $('copyfb').style.display = 'none';
+    setMsg(''); $('copymsg').textContent = '全部消しました。'; $('copymsg').className = 'msg';
+    renderSpeakers(); render();
+  }
+
+  // ---- 起動 ----
+  function init() {
+    load();
+    var ts = todayStr();
+    $('convDate').value = ts;
+    if (usedFixed) { var cn = $('calcnote'); cn.hidden = false; cn.textContent = '検算用の日付を使っています（今日＝' + ts + '）'; }
+    $('src').addEventListener('input', function () {
+      clearTimeout(spkTimer); spkTimer = setTimeout(renderSpeakers, 200);
+      $('clear').disabled = false;
+    });
+    $('sample').addEventListener('click', function () {
+      $('src').value = SAMPLE; $('src').setAttribute('data-me', '田中'); renderSpeakers(); setMsg('サンプルを入れました。「もれを探す」を押してください。'); render();
+    });
+    $('run').addEventListener('click', run);
+    $('copy').addEventListener('click', copyList);
+    $('clear').addEventListener('click', clearAll);
+    $('addBtn').addEventListener('click', addManual);
+    renderSpeakers(); render();
+  }
+  init();
+})();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+</body>
+</html>
