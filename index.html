@@ -101,9 +101,17 @@
     main { padding: 24px 16px 40px; }
     h1 { font-size: 24px; }
     .cols { display: grid; grid-template-columns: 5fr 7fr; gap: 24px; align-items: start; }
-    .left { position: sticky; top: 12px; }
     .facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; }
     .facts .span2 { grid-column: 1 / -1; order: -1; }
+    .item { padding: 8px 12px; }
+    .item .f { margin: 0 0 2px; }
+    .item .f .k { display: inline; margin-right: 8px; }
+    .item .f .v { display: inline; }
+    .item .f .v.what { font-size: 16px; }
+    .ev { display: inline-block; vertical-align: top; max-width: calc(100% - 5em); }
+    .ihead { min-height: 0; }
+    details.edit { margin: 0; }
+    .group { margin: 8px 0; }
   }
 </style>
 </head>
@@ -160,20 +168,20 @@
 
       <h2>手動で1件足す</h2>
       <div class="panel addform">
-        <div><label class="lb" for="addWho">誰に</label><input type="text" id="addWho" maxlength="30" autocomplete="off"></div>
-        <div><label class="lb" for="addWhat">何を</label><input type="text" id="addWhat" maxlength="60" autocomplete="off"></div>
+        <div><label class="lb" for="addWho">誰に</label><input type="text" id="addWho" maxlength="30" autocomplete="off" spellcheck="false"></div>
+        <div><label class="lb" for="addWhat">何を</label><input type="text" id="addWhat" maxlength="60" autocomplete="off" spellcheck="false"></div>
         <div><label class="lb" for="addDue">いつまで（空でも追加できます）</label><input type="date" id="addDue"></div>
         <button type="button" id="addBtn" class="block">一覧に足す</button>
       </div>
 
-      <p class="note" style="margin-top:12px" id="storeNote">項目はこの端末のブラウザにだけ保存します。ブラウザの設定や使い方によって消えることがあります（Safariなどでは、長く開かないと消える場合があります。実機では未確認です）。保存される根拠の文には、相手の名前や内容が入ることがあります。1件ずつの削除や、「全部消す」でいつでも消せます。</p>
+      <p class="note" style="margin-top:12px" id="storeNote">項目はこの端末のブラウザにだけ保存します。ブラウザの設定や使い方によって消えることがあります（Safariなどでは、長く開かないと消える場合があります。実機では未確認です）。保存される根拠の文（60字まで）には、相手の名前や内容が入ることがあります。メールアドレスと電話番号は取り除くようにしていますが、すべては取り除けません。1件ずつの削除や、「全部消す」でいつでも消せます。</p>
     </section>
   </div>
 
   <footer class="mw-footer">
     <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
     <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
-    <p>貼り付けた会話はこのページの中（お使いの端末のブラウザ）だけで処理し、サーバーには送信しません。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧数だけを計測しています。貼り付けた会話や入力内容は送信しません。</p>
+    <p>貼り付けた会話はこのページの中（お使いの端末のブラウザ）だけで処理し、サーバーには送信しません。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧状況（閲覧数・参照元・ブラウザの種類など）を計測しています。貼り付けた会話や入力内容は送信しません。</p>
     <p>言い回しのルールで判定する簡易的なチェックです。拾い漏れや拾い違いがあります。約束の管理は、必ずご自身の目で確認してください。</p>
     <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
   </footer>
@@ -218,11 +226,10 @@ var PR = (function () {
   function fridayOfWeek(base, weekOffset) {
     return addDays(mondayOf(base), weekOffset * 7 + 4);
   }
-  var VAGUE = /(来月|週明け|週末|年内|近いうち|近日|後ほど|のちほど|後で|あとで|そのうち|追って|改めて|折を見て|落ち着いたら|時間があるとき)/;
   // 各規則: [正規表現, 変換]。正規表現の1番目のグループは直前の文字（除去しない）
   var DEADLINE_RULES = [
-    [/()(\d{1,2})月(\d{1,2})日/, function (m, b) { var d = absDate(b, +m[2], +m[3]); return d && { date: d }; }],
-    [/(^|[^\d])(\d{1,2})\/(\d{1,2})(?![\d\/])/, function (m, b) { var d = absDate(b, +m[2], +m[3]); return d && { date: d }; }],
+    [/()(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/, function (m, b) { var d = m[2] ? validDate(+m[2], +m[3], +m[4]) : absDate(b, +m[3], +m[4]); return d && { date: d }; }],
+    [/(^|[^\d])(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})(?![\d\/])/, function (m, b) { var d = m[2] ? validDate(+m[2], +m[3], +m[4]) : absDate(b, +m[3], +m[4]); return d && { date: d }; }],
     [/()(来月)/, function () { return { vague: true }; }],
     [/(^|[^\d月])(\d{1,2})日(?=まで|には|中|に)/, function (m, b) { var d = validDate(b.y, b.m, +m[2]); return d && { date: d }; }],
     [/()(\d{1,2})日後/, function (m, b) { return { date: addDays(b, +m[2]) }; }],
@@ -240,12 +247,12 @@ var PR = (function () {
     }],
     [/()(来週中|来週内)/, function (m, b) { return { date: fridayOfWeek(b, 1), approx: true }; }],
     [/()(今月末|月末)/, function (m, b) { return { date: validDate(b.y, b.m, daysInMonth(b.y, b.m)) }; }],
-    [/()(週明け|週末|年内|近いうち|近日|後ほど|のちほど|後で|あとで|そのうち|追って|改めて|折を見て|落ち着いたら|時間があるとき)/, function () { return { vague: true }; }],
+    [/()(週明け|週末|年内|近いうち|近日|後ほど|のちほど|後で|あとで|そのうち|追って|改めて|折を見て|落ち着いたら|時間があるとき|来週)/, function () { return { vague: true }; }],
     [/()([月火水木金土日])曜日?/, function (m, b) {
       var diff = (DOWM[m[2]] - dow(b) + 7) % 7;
       return { date: addDays(b, diff) };
     }],
-    [/(^|[^\d])(\d{1,2})時(半|\d{1,2}分)?/, function (m, b) { return { date: b }; }]
+    [/(^|[^\d])(\d{1,2})時(?!間)(半|\d{1,2}分)?/, function (m, b) { return { date: b }; }]
   ];
   var TAIL = /^(までに|まで|には|に|中に|中は|中|ごろ|頃)/;
   function parseDeadline(s, base) {
@@ -337,7 +344,7 @@ var PR = (function () {
     var out = [];
     String(t).split('\n').forEach(function (line) {
       var mm = line.match(/[^。！？!?]+[。！？!?]*/g) || [];
-      mm.forEach(function (s) { s = s.trim(); if (s.length >= 2) out.push(s); });
+      mm.forEach(function (s) { s = s.trim().slice(0, 300); if (s.length >= 2) out.push(s); });
     });
     return out;
   }
@@ -370,13 +377,26 @@ var PR = (function () {
     found.forEach(function (f) { if (!seen[f.a.key] && out.length < 2) { seen[f.a.key] = 1; out.push(f); } });
     return out;
   }
-  var TRAIL_SYMBOLS = /[\s。．.!！?？~～♪★☆♡❤️👍🙏😊😄🙇‍♀️♂️…・\u{1F300}-\u{1FAFF}☀-➿]+$/u;
   var TEIKI = /[、，,]?(どうぞ|何卒)?よろしくお願い(いたし)?ます$/;
   var TEIKI_ONLY = /^(何卒|どうぞ|引き続き|今後とも|改めて|それでは|では|また)*よろしくお願い(いたし)?ます$/;
   var ENDING = /(ます|いたします|致します|予定です|予定でございます|つもりです)(ね|よ|ので|が|けど|けれど|から|し|です)?$/;
   var REJECT_OBJ = ['私', 'わたし', '僕', '弊社', '当方', 'こちら', 'そちら', 'それ', 'これ', 'あれ', 'わたくし'];
 
-  function stripTrail(s) { return s.replace(TRAIL_SYMBOLS, ''); }
+  var TRAIL_ONE = /^[\s。．.!！?？~～♪★☆♡❤️👍🙏😊😄🙇‍♀️♂️…・\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F\u200D]$/u;
+  function stripTrail(s) {
+    var i = s.length;
+    while (i > 0) {
+      var c = s.charAt(i - 1), len = 1;
+      if (i > 1 && /[\uDC00-\uDFFF]/.test(c) && /[\uD800-\uDBFF]/.test(s.charAt(i - 2))) { c = s.slice(i - 2, i); len = 2; }
+      if (!TRAIL_ONE.test(c)) break;
+      i -= len;
+    }
+    return s.slice(0, i);
+  }
+  function clip(s, n) {
+    var a = Array.from(String(s));
+    return a.length > n ? a.slice(0, n - 1).join('') + '…' : a.join('');
+  }
 
   function extractObject(masked, firstIdx) {
     var pre = masked.slice(0, firstIdx).replace(/[おご]$/, '');
@@ -401,6 +421,12 @@ var PR = (function () {
     if (!s || TEIKI_ONLY.test(s)) return null;
     if (/[？?]/.test(s) || /か$/.test(s)) return null;
     if (/もし|場合|であれば/.test(s)) return null;
+    var cj = /(ですが|けど|けれど|ものの|が、)[、,]?/g, cm2, cut = -1;
+    while ((cm2 = cj.exec(s))) cut = cm2.index + cm2[0].length;
+    if (cut > 0 && cut < s.length && findActions(s.slice(cut)).length) s = s.slice(cut);
+    if (/(もらえ|くれ|いただけ|頂け)[^。]*(助かり|嬉し|うれし|ありがた)/.test(s)) return null;
+    if (/ない|ません|控え|やめ/.test(s)) return null;
+    if (/(て|で)(い|お)(ます|ります|ました)$/.test(s)) return null;
     if (/ありがとう|恐れ入|申し訳|すみません|ごめん/.test(s)) return null;
     var tmp = s.replace(/させて(いただ|頂)/g, 'させて');
     if (/(いただ|頂)/.test(tmp)) return null;
@@ -415,7 +441,8 @@ var PR = (function () {
     var obj = extractObject(dl.masked, acts[0].i);
     var chain = acts.length > 1 ? acts[0].a.te + acts[1].a.base : acts[0].a.base;
     return {
-      what: (obj ? obj + 'を' : '') + chain,
+      obj: obj,
+      what: clip(scrub((obj ? obj + 'を' : '') + chain), 60),
       keys: acts.map(function (x) { return x.a.key; }),
       dl: dl
     };
@@ -433,8 +460,9 @@ var PR = (function () {
   }
   function scrub(s) {
     return String(s)
-      .replace(/[\w.+\-]+@[\w\-]+(\.[\w\-]+)+/g, '(メール)')
-      .replace(/0\d{1,4}[\-ー]\d{1,4}[\-ー]\d{3,4}|0\d{9,10}/g, '(電話番号)');
+      .replace(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}/g, '(メール)')
+      .replace(/(\+81|＋81)?[\s\-ー－]*[(（]?[0０][\d０-９]{1,4}[)）]?[\s\-ー－]*[\d０-９]{1,4}[\s\-ー－]*[\d０-９]{3,4}/g, '(電話番号)')
+      .replace(/[0０][\d０-９]{9,10}/g, '(電話番号)');
   }
 
   var seq = 0;
@@ -456,6 +484,7 @@ var PR = (function () {
       for (j = mi + 1; j < msgs.length; j++) { var sp2 = msgs[j].speaker; if (sp2 && sp2 !== meName) return sp2; }
       return '';
     }
+    if (flat.length > 2000) flat = flat.slice(0, 2000);
     var items = [], seen = {};
     function add(it) {
       var k = it.who + '|' + it.evidence.slice(0, 60);
@@ -471,12 +500,12 @@ var PR = (function () {
       var re = doneRegex(p.keys);
       for (var k = fi + 1; k < flat.length; k++) {
         var o = flat[k];
-        if ((unknownMode || o.speaker === meName) && re.test(o.text)) { guess = true; break; }
+        if ((unknownMode || o.speaker === meName) && re.test(o.text) && (!p.obj || o.text.indexOf(p.obj) >= 0)) { guess = true; break; }
       }
       add({
-        id: newId(), kind: 'promise', who: unknownMode ? '' : otherName(s.mi), what: p.what,
+        id: newId(), kind: 'promise', who: unknownMode ? '' : clip(scrub(otherName(s.mi)), 20), what: p.what,
         due: p.dl.date ? ymd(p.dl.date) : null, approx: p.dl.approx, basis: p.dl.basis,
-        evidence: scrub(s.text), done: false, guess: guess, check: unk, edited: false
+        evidence: clip(scrub(s.text), 60), done: false, guess: guess, check: unk, edited: false
       });
     });
     if (!unknownMode) {
@@ -488,8 +517,8 @@ var PR = (function () {
       });
       waits.slice(-5).forEach(function (s) {
         add({
-          id: newId(), kind: 'wait', who: s.speaker, what: '返信する',
-          due: null, approx: false, basis: '', evidence: scrub(s.text),
+          id: newId(), kind: 'wait', who: clip(scrub(s.speaker), 20), what: '返信する',
+          due: null, approx: false, basis: '', evidence: clip(scrub(s.text), 60),
           done: false, guess: false, check: false, edited: false
         });
       });
@@ -530,12 +559,13 @@ var PR = (function () {
     var d = new Date();
     return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
   }
-  var todayObj = localToday(), usedFixed = false;
+  var fixedToday = null, usedFixed = false;
   try {
     var q = /[?&]today=(\d{4}-\d{2}-\d{2})/.exec(location.search);
-    if (q) { var fx = PR.parseYmd(q[1]); if (fx) { todayObj = fx; usedFixed = true; } }
+    if (q) { var fx = PR.parseYmd(q[1]); if (fx) { fixedToday = fx; usedFixed = true; } }
   } catch (e) { /* 何もしない */ }
-  function todayStr() { return PR.ymd(todayObj); }
+  function getToday() { return fixedToday || localToday(); }
+  function todayStr() { return PR.ymd(getToday()); }
 
   // ---- 保存 ----
   function save() {
@@ -545,7 +575,7 @@ var PR = (function () {
         items: state.items.map(function (it) {
           return {
             id: it.id, kind: it.kind, who: it.who, what: it.what, due: it.due, approx: !!it.approx,
-            basis: it.basis || '', evidence: String(it.evidence || '').slice(0, 60), done: !!it.done,
+            basis: it.basis || '', evidence: Array.from(String(it.evidence || '')).slice(0, 60).join(''), done: !!it.done,
             guess: !!it.guess, check: !!it.check, edited: !!it.edited
           };
         })
@@ -611,6 +641,12 @@ var PR = (function () {
       lab.appendChild(r); lab.appendChild(el('span', null, nm));
       box.appendChild(lab);
     });
+    var labN = el('label', 'spk');
+    var rN = el('input'); rN.type = 'radio'; rN.name = 'me'; rN.value = '__none__'; rN.id = 'spkNone';
+    if (cur === '__none__') rN.checked = true;
+    rN.addEventListener('change', function () { $('src').setAttribute('data-me', '__none__'); });
+    labN.appendChild(rN); labN.appendChild(el('span', null, 'どれでもない（担当は「要確認」になります）'));
+    box.appendChild(labN);
     if (p.speakers.length > 12) hint.textContent += '（話者が多いため、先頭の12人だけ表示しています）';
   }
   function chosenMe() {
@@ -622,14 +658,14 @@ var PR = (function () {
   function groupOf(it) {
     if (it.check) return 'check';
     if (!it.due) return 'undecided';
-    var d = PR.diffDays(PR.parseYmd(it.due), todayObj);
+    var d = PR.diffDays(PR.parseYmd(it.due), getToday());
     if (d < 0) return 'over';
     if (d <= 2) return 'soon';
     return 'later';
   }
   function dueText(it) {
     if (!it.due) return '期限未定' + (it.basis ? '（「' + it.basis + '」）' : '');
-    var s = PR.fmtShort(PR.parseYmd(it.due), todayObj);
+    var s = PR.fmtShort(PR.parseYmd(it.due), getToday());
     if (it.edited) return s + '（直しました）';
     return s + (it.basis ? '（「' + it.basis + '」から）' : '');
   }
@@ -649,10 +685,10 @@ var PR = (function () {
     var li = el('li', 'item' + (g === 'over' ? ' is-over' : g === 'soon' ? ' is-soon' : ''));
     var head = el('div', 'ihead');
     if (g === 'over') {
-      var od = PR.diffDays(todayObj, PR.parseYmd(it.due));
+      var od = PR.diffDays(getToday(), PR.parseYmd(it.due));
       head.appendChild(el('span', 'chip over', '期限切れ（' + od + '日超過）'));
     } else if (g === 'soon') {
-      var sd = PR.diffDays(PR.parseYmd(it.due), todayObj);
+      var sd = PR.diffDays(PR.parseYmd(it.due), getToday());
       head.appendChild(el('span', 'chip soon', '期限間近（' + (sd === 0 ? '今日' : sd === 1 ? '明日' : 'あと2日') + '）'));
     }
     if (it.kind === 'wait') head.appendChild(el('span', 'chip wait', '返信待ち'));
@@ -694,7 +730,7 @@ var PR = (function () {
         var v = PR.parseYmd(di.value) ? di.value : null;
         it.due = v; it.approx = false; it.edited = true; save(); needRender = true;
       });
-      di.addEventListener('blur', function () { if (needRender) { needRender = false; render(); } });
+      di.addEventListener('blur', function () { setTimeout(function () { if (needRender) { needRender = false; render(); } }, 1200); });
       ctl.appendChild(dl); ctl.appendChild(di);
       var bu = el('button', null, '期限未定にする'); bu.type = 'button';
       bu.addEventListener('click', function () { it.due = null; it.approx = false; it.edited = true; save(); render(); });
@@ -726,6 +762,7 @@ var PR = (function () {
     });
   }
   function render() {
+    needRender = false;
     var list = $('list'); list.textContent = '';
     var active = state.items.filter(function (x) { return !x.done && !x.guess; });
     var guesses = state.items.filter(function (x) { return !x.done && x.guess; });
@@ -770,7 +807,8 @@ var PR = (function () {
     var p = PR.parseConversation(text.slice(0, MAX_TEXT));
     var me = chosenMe();
     if (p.speakers.length && !me) { setMsg('「あなたはどの話者ですか」から、あなたの名前を選んでください。', true); return; }
-    if (me) { state.me = me; }
+    if (me === '__none__') me = '';
+    else if (me) { state.me = me; }
     var notice = text.length > MAX_TEXT ? '長いので、先頭の5万字だけ処理しました。' : '';
     var res = PR.extract(text.slice(0, MAX_TEXT), me, conv);
     var have = {};
@@ -835,9 +873,11 @@ var PR = (function () {
   function clearAll() {
     if (!window.confirm('一覧と、貼った会話をすべて消します。元に戻せません。よろしいですか？')) return;
     state.items = []; state.me = '';
-    try { localStorage.removeItem(KEY); } catch (e) { /* 何もしない */ }
+    var rmFail = false;
+    try { localStorage.removeItem(KEY); } catch (e) { rmFail = true; }
+    $('addWho').value = ''; $('addWhat').value = ''; $('addDue').value = '';
     $('src').value = ''; $('src').removeAttribute('data-me'); $('copyfb').style.display = 'none';
-    setMsg(''); $('copymsg').textContent = '全部消しました。'; $('copymsg').className = 'msg';
+    setMsg(''); $('copymsg').textContent = rmFail ? '画面の内容は消しましたが、保存された項目を消せませんでした。ブラウザの設定から、このサイトのデータを消してください。' : '全部消しました。'; $('copymsg').className = 'msg' + (rmFail ? ' err' : '');
     renderSpeakers(); render();
   }
 
